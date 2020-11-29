@@ -1,5 +1,9 @@
 import * as Yup from 'yup';
+import { ptShort } from 'yup-locale-pt';
+
 import User from '../models/User';
+
+Yup.setLocale(ptShort);
 
 class UserController {
   async store(req, res) {
@@ -14,9 +18,15 @@ class UserController {
     });
 
     if (!(await schema.isValid(req.body))) {
-      return res
-        .status(400)
-        .json({ error: 'Campos obrigatórios não informados.' });
+      try {
+        await schema.validate(req.body);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+          field: error.params.path,
+        });
+      }
     }
 
     const userExists = await User.findOne({ where: { email: req.body.email } });
@@ -36,21 +46,31 @@ class UserController {
     const schema = Yup.object().shape({
       name: Yup.string(),
       email: Yup.string().email(),
-      oldPassword: Yup.string().min(6),
-      password: Yup.string()
-        .min(6, 'Senha com mínimo de 6 dígitos.')
-        .when('oldPassword', (oldPassword, field) =>
-          oldPassword ? field.required() : field
-        ),
+      oldPassword: Yup.string(),
+      password: Yup.string().when('oldPassword', (oldPassword, field) =>
+        oldPassword ? field.min(6).required() : field
+      ),
       confirmPassword: Yup.string().when('password', (password, field) =>
-        password ? field.required().oneOf([Yup.ref('password')]) : field
+        password
+          ? field
+              .required()
+              .oneOf(
+                [Yup.ref('password')],
+                'Confirmação de senha deve ser igual a senha.'
+              )
+          : field
       ),
     });
+
     if (!(await schema.isValid(req.body))) {
       try {
         await schema.validate(req.body);
       } catch (error) {
-        return res.status(400).json({ success: false, error: error.errors });
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+          field: error.params.path,
+        });
       }
     }
 
@@ -63,18 +83,28 @@ class UserController {
         where: { email },
       });
       if (userExists) {
-        return res.status(400).json({ error: 'Email já está em uso.' });
+        return res.status(401).json({
+          success: false,
+          error: 'Email em uso.',
+          field: 'email',
+        });
       }
     }
 
     if (password && !oldPassword) {
-      return res
-        .status(401)
-        .json({ error: 'Por favor informe a antiga senha.' });
+      return res.status(401).json({
+        success: false,
+        error: 'Obrigatório.',
+        field: 'oldPassword',
+      });
     }
 
     if (oldPassword && !(await user.checkPassword(oldPassword))) {
-      return res.status(401).json({ error: 'Senha não confere' });
+      return res.status(401).json({
+        success: false,
+        error: 'Senha atual e nova senha não conferem.',
+        field: ['oldPassword', 'password'],
+      });
     }
 
     const { id, name } = await user.update(req.body);

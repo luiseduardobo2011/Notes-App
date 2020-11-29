@@ -12,6 +12,7 @@ class User extends Model {
       },
       {
         sequelize,
+        tableName: 'users',
       }
     );
     this.addHook('beforeSave', async user => {
@@ -25,6 +26,18 @@ class User extends Model {
 
   checkPassword(password) {
     return bcrypt.compare(password, this.password_hash);
+  }
+
+  static associate(models) {
+    this.hasMany(models.Note, {
+      foreignKey: 'owner_user_id',
+      as: 'notes_owner',
+    });
+    this.belongsToMany(models.Note, {
+      foreignKey: 'user_id',
+      through: 'note_user',
+      as: 'notes',
+    });
   }
 }
 export default User;
